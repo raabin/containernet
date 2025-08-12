@@ -150,8 +150,10 @@ class Intf( object ):
         "Return whether interface is up"
         if setUp:
             cmdOutput = self.ifconfig( 'up' )
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            clean_output = ansi_escape.sub('', cmdOutput).strip()
             # no output / command output indicates success
-            if (len(cmdOutput) > 0
+            if (len(clean_output) > 0
                     and "ifconfig" not in cmdOutput):
                 error( "Error setting %s up: %s " % ( self.name, cmdOutput ) )
                 return False
