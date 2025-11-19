@@ -180,7 +180,7 @@ function mn_wifi_deps {
       echo "Removing Mininet-WiFi dir..."
       rm -r mininet-wifi
     fi
-    sudo git clone --depth=1 https://github.com/intrig-unicamp/mininet-wifi.git
+    sudo git clone --depth=1 https://github.com/raabin/mininet-wifi.git
     pushd $MININET_DIR/containernet/mininet-wifi
     sudo util/install.sh -Wlnfv6
     sudo PYTHON=${PYTHON} make install
