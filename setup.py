@@ -43,6 +43,7 @@ setup(
     keywords='networking emulator protocol Internet OpenFlow SDN',
     license='BSD',
     install_requires=[
+        'six',
         'setuptools',
         'urllib3',
         'docker',

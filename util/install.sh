@@ -67,7 +67,7 @@ if [ "$DIST" = "SUSE Linux" ]; then
     pkginst='sudo rpm -ivh'
     # Prereqs for this script
     if ! which lsb_release &> /dev/null; then
-		$install openSUSE-release
+        $install openSUSE-release
     fi
 fi
 if which lsb_release &> /dev/null; then
@@ -175,35 +175,57 @@ function kernel_clean {
 function mn_wifi_deps {
     echo "Installing Mininet/Mininet-WiFi dependencies"
     echo "Installing Mininet-WiFi core"
+    
+    # Determine the correct pip installation command prefix
+    PIP_BIN="/home/rp5dm/work/OpenSource/fleet/.venv/bin/python -m pip"
+    PIP_INSTALL_OPTS=""
+    
+    if [ "$DIST" = "Ubuntu" ] &&  [ `expr $RELEASE '>=' 24.04` = "1" ]; then
+        PIP_INSTALL_OPTS+=" --break-system-packages"
+    fi
+    
     pushd $MININET_DIR/containernet
     if [ -d mininet-wifi ]; then
       echo "Removing Mininet-WiFi dir..."
       rm -r mininet-wifi
     fi
-    sudo git clone --depth=1 https://github.com/raabin/mininet-wifi.git
+    
+    sudo git clone -b rp5dm https://github.com/raabin/mininet-wifi.git
     pushd $MININET_DIR/containernet/mininet-wifi
+    
+    # Install system deps required by Mininet-WiFi
     sudo util/install.sh -Wlnfv6
+    
     sudo PYTHON=${PYTHON} make install
-    popd
+    
+    popd # Back to $MININET_DIR/containernet
+
+    # Determine the correct distribution ID for Docker repository setup
+    DOCKER_DIST_ID="ubuntu"
+    if [ "$DIST" = "Debian" ]; then
+        DOCKER_DIST_ID="debian"
+    fi
 
     $install aptitude apt-transport-https ca-certificates curl build-essential software-properties-common gnupg
     sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    curl -fsSL https://download.docker.com/linux/$DOCKER_DIST_ID/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    echo "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DOCKER_DIST_ID \
          "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     $update update
     $install docker-ce
+    
+    PIP_INSTALL_DOCKER="install requests docker python-iptables"
     if [ "$DIST" = "Ubuntu" ] &&  [ `expr $RELEASE '>=' 24.04` = "1" ]; then
- 	 sudo PYTHON=${PYTHON} pip install docker python-iptables --break-system-packages
-    else
- 	 sudo PYTHON=${PYTHON} pip install docker python-iptables
+        PIP_INSTALL_DOCKER+=" --break-system-packages"
     fi
-
-    pushd $MININET_DIR/containernet
+    
+    sudo $PIP_BIN $PIP_INSTALL_DOCKER
+    
     sudo PYTHON=${PYTHON} make install
-    popd
+    
+    popd # Back to $BUILD_DIR
 }
 
 # Install Mininet developer dependencies
@@ -223,12 +245,21 @@ function of {
     echo "Installing OpenFlow reference implementation..."
     cd $BUILD_DIR
     $install autoconf automake libtool make gcc patch
-    if [ "$DIST" = "Fedora" ]; then
-        $install git pkgconfig glibc-devel
+    if [ "$DIST" = "Fedora" -o "$DIST" = "RedHatEnterpriseServer" -o "$DIST" = "CentOS" ]; then
+        $install git pkgconfig glibc-devel libbsd-devel
     else
-        $install git-core autotools-dev pkg-config libc6-dev
+        $install git-core autotools-dev pkg-config libc6-dev libbsd-dev
     fi
-    git clone --depth=1 https://github.com/mininet/openflow
+
+    # Conditional OpenFlow repository clone for Debian/Ubuntu >= 24.04
+    if [ "$DIST" = "Ubuntu" ] &&  [ `expr $RELEASE '>=' 24.04` = "1" ]; then
+        git clone --depth=1 https://github.com/ramonfontes/openflow
+    elif [ "$DIST" = "Debian" ]; then
+        git clone --depth=1 https://github.com/ramonfontes/openflow -b debian
+    else
+        git clone --depth=1 https://github.com/mininet/openflow
+    fi
+    
     cd $BUILD_DIR/openflow
 
     # Patch controller to handle more than 16 switches
@@ -237,6 +268,7 @@ function of {
     # Resume the install:
     ./boot.sh
     ./configure
+    sed -i.bak '/^LIBS =/ s/$/ -lbsd/' Makefile
     make
     sudo make install
     cd $BUILD_DIR
